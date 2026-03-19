@@ -473,7 +473,7 @@ def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
         pts_obj = volume_to_point_cloud(obj / (obj.max() + 1e-8), threshold=0.30, ds=ds, max_points=max_pts)
         st.plotly_chart(
             fig_cloud(pts_obj, "True 3D object (point cloud)", show_axes=show_axes),
-            use_container_width=True,
+            width="stretch",
             key=f"cloud_true_{mode_name}",
         )
     with colB:
@@ -481,7 +481,7 @@ def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
         pts_init = volume_to_point_cloud(vol_norm, threshold=thr, ds=ds, max_points=max_pts)
         st.plotly_chart(
             fig_cloud(pts_init, "Combined 3D initial guess (point cloud)", show_axes=show_axes),
-            use_container_width=True,
+            width="stretch",
             key=f"cloud_init_{mode_name}",
         )
 
@@ -500,7 +500,7 @@ def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
     with c1:
         st.plotly_chart(
             fig_phase(phase_maps[idx], f"2D phase map (theta={theta:.1f}°, phi={phi_disp:.1f}°)"),
-            use_container_width=True,
+            width="stretch",
             key=f"phase_{mode_name}_{idx}",
         )
     with c2:
