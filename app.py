@@ -466,7 +466,7 @@ def _params_fingerprint(mode_name: str) -> str:
     return "|".join([mode_name, projection_key, repr(vol_p), repr(sim_p), str(fbp_enabled), fbp_window, str(fbp_strength)])
 
 
-def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
+def render_common(obj, angles, phase_maps, backprojs, init_vol, mode_name: str):
     st.caption(f"Sweep mode: {mode_name} | number of angles: {len(angles)}")
     colA, colB = st.columns(2)
     with colA:
@@ -496,7 +496,7 @@ def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
     )
     theta, phi = angles[idx]
     phi_disp = (phi % 360.0 + 360.0) % 360.0
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         st.plotly_chart(
             fig_phase(phase_maps[idx], f"2D phase map (theta={theta:.1f}°, phi={phi_disp:.1f}°)"),
@@ -504,6 +504,15 @@ def render_common(obj, angles, phase_maps, init_vol, mode_name: str):
             key=f"phase_{mode_name}_{idx}",
         )
     with c2:
+        bp = backprojs[idx]
+        bp_norm = bp / (bp.max() + 1e-8)
+        pts_bp = volume_to_point_cloud(bp_norm, threshold=thr, ds=ds, max_points=max_pts)
+        st.plotly_chart(
+            fig_cloud(pts_bp, f"Backprojection @ index {idx} (3D)", show_axes=show_axes),
+            width="stretch",
+            key=f"bp_cloud_{mode_name}_{idx}",
+        )
+    with c3:
         st.write("각도 리스트(일부)")
         lines = []
         for i, (t, p) in list(enumerate(angles))[: min(30, len(angles))]:
@@ -531,7 +540,7 @@ with tab_theta:
 
     if st.button("Run theta sweep", type="primary"):
         with st.spinner("계산 중..."):
-            obj, angles, phase_maps, _backprojs, init_vol = run_sweep_cached(
+            obj, angles, phase_maps, backprojs, init_vol = run_sweep_cached(
                 "theta",
                 thetas,
                 phis,
@@ -547,12 +556,13 @@ with tab_theta:
             obj=obj,
             angles=angles,
             phase_maps=phase_maps,
+            backprojs=backprojs,
             init_vol=init_vol,
         )
 
     saved = st.session_state.get(_state_key("theta"))
     if saved and saved.get("fingerprint") == _params_fingerprint("theta"):
-        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["init_vol"], "theta")
+        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["backprojs"], saved["init_vol"], "theta")
     else:
         st.info("After running the sweep, the result is cached and changing the preview index will not erase it.")
 
@@ -576,7 +586,7 @@ with tab_phi:
 
     if st.button("Run phi sweep", type="primary"):
         with st.spinner("계산 중..."):
-            obj, angles, phase_maps, _backprojs, init_vol = run_sweep_cached(
+            obj, angles, phase_maps, backprojs, init_vol = run_sweep_cached(
                 "phi",
                 thetas,
                 phis,
@@ -592,12 +602,13 @@ with tab_phi:
             obj=obj,
             angles=angles,
             phase_maps=phase_maps,
+            backprojs=backprojs,
             init_vol=init_vol,
         )
 
     saved = st.session_state.get(_state_key("phi"))
     if saved and saved.get("fingerprint") == _params_fingerprint("phi"):
-        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["init_vol"], "phi")
+        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["backprojs"], saved["init_vol"], "phi")
     else:
         st.info("After running the sweep, the result is cached and changing the preview index will not erase it.")
 
@@ -625,7 +636,7 @@ with tab_grid:
 
     if st.button("Run grid sweep", type="primary"):
         with st.spinner("계산 중..."):
-            obj, angles, phase_maps, _backprojs, init_vol = run_sweep_cached(
+            obj, angles, phase_maps, backprojs, init_vol = run_sweep_cached(
                 "grid",
                 thetas,
                 phis,
@@ -641,12 +652,13 @@ with tab_grid:
             obj=obj,
             angles=angles,
             phase_maps=phase_maps,
+            backprojs=backprojs,
             init_vol=init_vol,
         )
 
     saved = st.session_state.get(_state_key("grid"))
     if saved and saved.get("fingerprint") == _params_fingerprint("grid"):
-        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["init_vol"], "grid")
+        render_common(saved["obj"], saved["angles"], saved["phase_maps"], saved["backprojs"], saved["init_vol"], "grid")
     else:
         st.info("After running the sweep, the result is cached and changing the preview index will not erase it.")
 
