@@ -1,0 +1,139 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import rotate, gaussian_filter
+
+# ------------------------------------------------------------
+# Simplified reflective-backprojection simulation
+# ------------------------------------------------------------
+# Idea:
+# 1) Real sphere sits above a mirror.
+# 2) Mirror-mediated double-pass is represented by a mirror image sphere below the mirror.
+# 3) Angle-dependent "phase map" is the projection of (real sphere + weighted image sphere).
+# 4) Backprojection from different angles is combined into an initial guess.
+#
+# This is a conceptual simulation for understanding geometry,
+# not a full wave-optics reflective ODT solver.
+# ------------------------------------------------------------
+
+N = 128
+x = np.linspace(-1.0, 1.0, N)
+z = np.linspace(-1.0, 1.0, N)
+X, Z = np.meshgrid(x, z, indexing="xy")
+
+R = 0.16                      # sphere radius
+mirror_z = 0.0
+angles = [-25, 0, 25]         # degrees
+gaps = [0.05, 0.20, 0.40]     # sphere-mirror gap
+image_weight = 0.9            # strength of mirror-mediated path
+
+def disk(x0, z0, r):
+    return (((X - x0)**2 + (Z - z0)**2) <= r**2).astype(float)
+
+def make_object_and_image(gap):
+    # real sphere center above mirror
+    zc = mirror_z + gap + R
+    real = disk(0.0, zc, R)
+    # mirror image sphere center below mirror
+    img = disk(0.0, -zc, R)
+    # mild smoothing for nicer rendering
+    real = gaussian_filter(real, sigma=1.0)
+    img = gaussian_filter(img, sigma=1.0)
+    return real, img, zc
+
+def phase_map_from_angle(real, img, angle_deg):
+    # effective reflective object = real sphere + weighted mirror image
+    eff = real + image_weight * img
+    # rotate object, then project along z (vertical axis of array after rotation)
+    eff_rot = rotate(eff, angle=angle_deg, reshape=False, order=1)
+    phase = np.sum(eff_rot, axis=0)
+    phase = gaussian_filter(phase, sigma=1.0)
+    return phase
+
+def backproject_2d(phase, angle_deg):
+    # expand 1D phase profile into a 2D "fog"
+    vol = np.repeat(phase[np.newaxis, :], N, axis=0)
+    vol = gaussian_filter(vol, sigma=(8.0, 0.0))  # spread along depth
+    # rotate back into object coordinates
+    vol_back = rotate(vol, angle=-angle_deg, reshape=False, order=1)
+    return vol_back
+
+# ------------------------------------------------------------
+# Build all data
+# ------------------------------------------------------------
+all_rows = []
+for gap in gaps:
+    real, img, zc = make_object_and_image(gap)
+    phase_maps = [phase_map_from_angle(real, img, a) for a in angles]
+    bps = [backproject_2d(p, a) for p, a in zip(phase_maps, angles)]
+    combined = np.mean(bps, axis=0)
+    combined = gaussian_filter(combined, sigma=1.2)
+    truth = real + 0.35 * img  # show image sphere faintly as geometry aid
+    all_rows.append((gap, truth, phase_maps, combined))
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+fig, axes = plt.subplots(
+    len(gaps), 5, figsize=(16, 10),
+    gridspec_kw={"width_ratios": [1.1, 1, 1, 1, 1.2]},
+    constrained_layout=True
+)
+
+for r, (gap, truth, phase_maps, combined) in enumerate(all_rows):
+    # 1) geometry panel
+    ax = axes[r, 0]
+    im = ax.imshow(
+        truth, origin="lower",
+        extent=[x.min(), x.max(), z.min(), z.max()],
+        cmap="Blues"
+    )
+    ax.axhline(0.0, color="gray", lw=2)
+    ax.text(-0.95, 0.04, "mirror", color="gray", fontsize=9, va="bottom")
+    ax.text(0.02, mirror_z + gap + R, "real sphere", color="white", fontsize=9,
+            ha="center", va="center", weight="bold")
+    ax.text(0.00, -(mirror_z + gap + R), "image sphere", color="#406a9f", fontsize=9,
+            ha="center", va="center")
+    ax.set_title(f"Geometry\n(gap d = {gap:.2f})", fontsize=11)
+    ax.set_xlabel("x")
+    ax.set_ylabel("z")
+    ax.set_aspect("equal")
+
+    # 2-4) phase maps at angles
+    for c, (ang, ph) in enumerate(zip(angles, phase_maps), start=1):
+        ax = axes[r, c]
+        ax.plot(x, ph, lw=2)
+        ax.fill_between(x, 0, ph, alpha=0.25)
+        ax.set_xlim(x.min(), x.max())
+        ax.set_ylim(0, max([p.max() for p in phase_maps]) * 1.08)
+        ax.set_title(f"Phase map\n({ang:+d}°)", fontsize=11)
+        ax.set_xlabel("detector x")
+        if c == 1:
+            ax.set_ylabel("phase amplitude")
+        else:
+            ax.set_yticklabels([])
+
+    # 5) combined backprojection
+    ax = axes[r, 4]
+    ax.imshow(
+        combined, origin="lower",
+        extent=[x.min(), x.max(), z.min(), z.max()],
+        cmap="viridis"
+    )
+    ax.axhline(0.0, color="white", lw=1.5, alpha=0.8)
+    ax.text(-0.95, 0.04, "mirror", color="white", fontsize=9, va="bottom")
+    ax.set_title("Combined backprojection", fontsize=11)
+    ax.set_xlabel("x")
+    ax.set_ylabel("z")
+    ax.set_aspect("equal")
+
+fig.suptitle(
+    "Reflective backprojection concept with varying sphere–mirror distance\n"
+    "Smaller gap: mirror-image contribution overlaps more strongly and modifies the angle-dependent phase maps",
+    fontsize=15
+)
+
+out = "/mnt/data/reflective_backprojection_vs_gap_simulation.png"
+plt.savefig(out, dpi=200, bbox_inches="tight")
+plt.show()
+
+print(out)
