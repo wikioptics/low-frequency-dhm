@@ -14,6 +14,11 @@ streamlit run app.py
 
 실행 후 브라우저에서 Streamlit 페이지가 열립니다.
 
+## Git update
+git add .
+git commit -m "Update mirror app"
+git push
+
 ## 기능
 
 - **Theta 스윕**: theta 범위/스텝 지정, phi는 고정

@@ -12,6 +12,11 @@ class VolumeParams:
     n: int = 48
     radius: float = 0.28
     obj_sigma: float = 1.0
+    # "sphere" | "cylinder_z" — cylinder: rotation axis = +z, \(x^2+y^2 \le R^2\), \(z \in [z_0,z_1]\)
+    object_kind: str = "sphere"
+    cyl_radius: float = 0.22
+    cyl_z0: float = -0.35
+    cyl_z1: float = 0.35
 
 
 @dataclass(frozen=True)
@@ -187,7 +192,13 @@ def make_object(p: VolumeParams) -> np.ndarray:
     y = np.linspace(-1, 1, n)
     z = np.linspace(-1, 1, n)
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-    obj = ((X**2 + Y**2 + Z**2) < float(p.radius) ** 2).astype(np.float32)
+    if getattr(p, "object_kind", "sphere") == "cylinder_z":
+        z0 = float(min(p.cyl_z0, p.cyl_z1))
+        z1 = float(max(p.cyl_z0, p.cyl_z1))
+        r_xy = float(p.cyl_radius)
+        obj = (((X**2 + Y**2) <= r_xy**2) & (Z >= z0) & (Z <= z1)).astype(np.float32)
+    else:
+        obj = ((X**2 + Y**2 + Z**2) < float(p.radius) ** 2).astype(np.float32)
     if p.obj_sigma and p.obj_sigma > 0:
         obj = gaussian_filter(obj, sigma=float(p.obj_sigma))
     return obj
@@ -396,8 +407,27 @@ st.markdown(
 
 with st.sidebar:
     st.subheader("3D 오브젝트")
+    object_kind_ui = st.radio(
+        "형상",
+        options=["sphere", "cylinder_z"],
+        format_func=lambda x: "구 (sphere)" if x == "sphere" else "실린더 (z축)",
+        index=0,
+        help="실린더: 회전축이 +z인 원기둥. 단면은 x²+y²≤R², z는 [z₀,z₁] 구간.",
+    )
     n = st.slider("해상도 N", min_value=24, max_value=96, value=48, step=8)
-    radius = st.slider("구 반지름", min_value=0.10, max_value=0.60, value=0.28, step=0.02)
+    if object_kind_ui == "sphere":
+        radius = st.slider("구 반지름", min_value=0.10, max_value=0.60, value=0.28, step=0.02)
+        cyl_radius = 0.22
+        cyl_z0 = -0.35
+        cyl_z1 = 0.35
+    else:
+        radius = 0.28
+        cyl_radius = st.slider("실린더 반지름 √(x²+y²) ≤ R", min_value=0.08, max_value=0.55, value=0.22, step=0.02)
+        c1, c2 = st.columns(2)
+        with c1:
+            cyl_z0 = st.number_input("z 하한 z₀", value=-0.40, min_value=-1.0, max_value=1.0, step=0.05)
+        with c2:
+            cyl_z1 = st.number_input("z 상한 z₁", value=0.40, min_value=-1.0, max_value=1.0, step=0.05)
     obj_sigma = st.slider("오브젝트 Gaussian sigma", min_value=0.0, max_value=3.0, value=1.0, step=0.25)
 
     st.subheader("시뮬레이션/복원")
@@ -420,6 +450,11 @@ with st.sidebar:
         value=72,
         step=8,
         help="광선 선적분/역투영에서 t 샘플 개수입니다. 각도 개수와 곱으로 비용이 늘어납니다.",
+    )
+    st.caption(
+        "속도: **회전 후 z합**이 가장 빠릅니다. **광선 선적분**은 각도마다 "
+        "볼륨 샘플링 비용이 커서(×선적분 샘플 수) 오래 걸릴 수 있습니다. "
+        "느리면 N을 32~48, 각도 수를 줄이거나 선적분 샘플을 40 이하로 낮춰 보세요."
     )
     st.subheader("Filtered Backprojection(실험)")
     fbp_enabled = st.checkbox(
@@ -446,7 +481,15 @@ with st.sidebar:
 
 tab_theta, tab_phi, tab_grid = st.tabs(["Theta Sweep", "Phi Sweep", "Theta×Phi Grid"])
 
-vol_p = VolumeParams(n=n, radius=radius, obj_sigma=obj_sigma)
+vol_p = VolumeParams(
+    n=n,
+    radius=radius,
+    obj_sigma=obj_sigma,
+    object_kind=object_kind_ui,
+    cyl_radius=float(cyl_radius),
+    cyl_z0=float(cyl_z0),
+    cyl_z1=float(cyl_z1),
+)
 sim_p = SimParams(phase_sigma=phase_sigma, z_blur_sigma=z_blur, recon_sigma=recon_sigma, ray_samples=ray_samples)
 projection_key = "ray" if projection_mode.startswith("광선") else "rotate_sum"
 
